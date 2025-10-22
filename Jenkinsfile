@@ -5,6 +5,7 @@ pipeline {
         DOCKER_HUB_USER = 'ment00x'
         APP_NAME = 'flask'
         KUBE_SERVICE = 'flask-service'
+        KUBECONFIG = 'C:\\ProgramData\\Jenkins\\.kube\\config'  // <-- add this line
     }
 
     stages {
@@ -36,7 +37,7 @@ pipeline {
         stage('Determine Live Version') {
             steps {
                 script {
-                    def LIVE_VERSION = bat(script: "kubectl get svc %KUBE_SERVICE% -o jsonpath=\"{.spec.selector.version}\"", returnStdout: true).trim()
+                    def LIVE_VERSION = bat(script: 'kubectl get svc %KUBE_SERVICE% -o jsonpath="{.spec.selector.version}"', returnStdout: true).trim()
                     def NEXT_VERSION = LIVE_VERSION == 'blue' ? 'green' : 'blue'
                     env.LIVE_VERSION = LIVE_VERSION
                     env.NEXT_VERSION = NEXT_VERSION
