@@ -16,7 +16,7 @@ pipeline {
 
         stage('Build Docker Image') {
             steps {
-                sh 'docker build -t $DOCKER_HUB_USER/flask-jenkins:v1 .'
+                bat 'docker build -t %DOCKER_HUB_USER%/flask-jenkins:v1 .'
             }
         }
 
@@ -25,8 +25,10 @@ pipeline {
                 withCredentials([usernamePassword(credentialsId: 'dockerhub',
                                                  usernameVariable: 'USER',
                                                  passwordVariable: 'PASS')]) {
-                    sh 'echo $PASS | docker login -u $USER --password-stdin'
-                    sh 'docker push $DOCKER_HUB_USER/flask-jenkins:v1'
+                    bat '''
+                        echo %PASS% | docker login -u %USER% --password-stdin
+                        docker push %DOCKER_HUB_USER%/flask-jenkins:v1
+                    '''
                 }
             }
         }
@@ -34,77 +36,79 @@ pipeline {
         stage('Determine Live Version') {
             steps {
                 script {
-                    LIVE_VERSION = sh(script: "kubectl get svc $KUBE_SERVICE -o jsonpath='{.spec.selector.version}'", returnStdout: true).trim()
-                    NEXT_VERSION = LIVE_VERSION == 'blue' ? 'green' : 'blue'
-                    echo "Live: $LIVE_VERSION, Next: $NEXT_VERSION"
+                    def LIVE_VERSION = bat(script: "kubectl get svc %KUBE_SERVICE% -o jsonpath=\"{.spec.selector.version}\"", returnStdout: true).trim()
+                    def NEXT_VERSION = LIVE_VERSION == 'blue' ? 'green' : 'blue'
+                    env.LIVE_VERSION = LIVE_VERSION
+                    env.NEXT_VERSION = NEXT_VERSION
+                    echo "Live: ${LIVE_VERSION}, Next: ${NEXT_VERSION}"
                 }
             }
         }
 
         stage('Deploy Next Version') {
             steps {
-                sh """
-                cat <<EOF > k8s/deployment-${NEXT_VERSION}.yaml
-                apiVersion: apps/v1
-                kind: Deployment
-                metadata:
-                  name: $APP_NAME-${NEXT_VERSION}
-                  labels:
-                    app: $APP_NAME
-                    version: $NEXT_VERSION
-                spec:
-                  replicas: 2
-                  selector:
-                    matchLabels:
-                      app: $APP_NAME
-                      version: $NEXT_VERSION
-                  template:
-                    metadata:
-                      labels:
-                        app: $APP_NAME
-                        version: $NEXT_VERSION
-                    spec:
-                      containers:
-                      - name: $APP_NAME
-                        image: $DOCKER_HUB_USER/flask-jenkins:v1
-                        ports:
-                        - containerPort: 5000
-                EOF
+                bat '''
+                echo apiVersion: apps/v1 > k8s\\deployment-%NEXT_VERSION%.yaml
+                echo kind: Deployment >> k8s\\deployment-%NEXT_VERSION%.yaml
+                echo metadata: >> k8s\\deployment-%NEXT_VERSION%.yaml
+                echo   name: %APP_NAME%-%NEXT_VERSION% >> k8s\\deployment-%NEXT_VERSION%.yaml
+                echo   labels: >> k8s\\deployment-%NEXT_VERSION%.yaml
+                echo     app: %APP_NAME% >> k8s\\deployment-%NEXT_VERSION%.yaml
+                echo     version: %NEXT_VERSION% >> k8s\\deployment-%NEXT_VERSION%.yaml
+                echo spec: >> k8s\\deployment-%NEXT_VERSION%.yaml
+                echo   replicas: 2 >> k8s\\deployment-%NEXT_VERSION%.yaml
+                echo   selector: >> k8s\\deployment-%NEXT_VERSION%.yaml
+                echo     matchLabels: >> k8s\\deployment-%NEXT_VERSION%.yaml
+                echo       app: %APP_NAME% >> k8s\\deployment-%NEXT_VERSION%.yaml
+                echo       version: %NEXT_VERSION% >> k8s\\deployment-%NEXT_VERSION%.yaml
+                echo   template: >> k8s\\deployment-%NEXT_VERSION%.yaml
+                echo     metadata: >> k8s\\deployment-%NEXT_VERSION%.yaml
+                echo       labels: >> k8s\\deployment-%NEXT_VERSION%.yaml
+                echo         app: %APP_NAME% >> k8s\\deployment-%NEXT_VERSION%.yaml
+                echo         version: %NEXT_VERSION% >> k8s\\deployment-%NEXT_VERSION%.yaml
+                echo     spec: >> k8s\\deployment-%NEXT_VERSION%.yaml
+                echo       containers: >> k8s\\deployment-%NEXT_VERSION%.yaml
+                echo       - name: %APP_NAME% >> k8s\\deployment-%NEXT_VERSION%.yaml
+                echo         image: %DOCKER_HUB_USER%/flask-jenkins:v1 >> k8s\\deployment-%NEXT_VERSION%.yaml
+                echo         ports: >> k8s\\deployment-%NEXT_VERSION%.yaml
+                echo         - containerPort: 5000 >> k8s\\deployment-%NEXT_VERSION%.yaml
 
-                kubectl apply -f k8s/deployment-${NEXT_VERSION}.yaml
-                kubectl rollout status deployment/$APP_NAME-${NEXT_VERSION}
-                """
+                kubectl apply -f k8s\\deployment-%NEXT_VERSION%.yaml
+                kubectl rollout status deployment/%APP_NAME%-%NEXT_VERSION%
+                '''
             }
         }
 
         stage('Smoke Test') {
             steps {
-                sh """
-                SERVICE_IP=\$(kubectl get svc $KUBE_SERVICE -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-                curl -f http://\$SERVICE_IP || exit 1
-                """
+                bat '''
+                FOR /F %%i IN ('kubectl get svc %KUBE_SERVICE% -o jsonpath="{.status.loadBalancer.ingress[0].ip}"') DO SET SERVICE_IP=%%i
+                curl -f http://%SERVICE_IP% || exit /b 1
+                '''
             }
         }
 
         stage('Switch Traffic') {
             steps {
-                sh """
-                kubectl patch service $KUBE_SERVICE -p '{"spec":{"selector":{"app":"'$APP_NAME'","version":"'$NEXT_VERSION'"}}}'
-                """
+                bat '''
+                kubectl patch service %KUBE_SERVICE% -p "{\"spec\":{\"selector\":{\"app\":\"%APP_NAME%\",\"version\":\"%NEXT_VERSION%\"}}}"
+                '''
             }
         }
 
         stage('Scale Down Old Version') {
             steps {
-                sh 'kubectl scale deployment/$APP_NAME-$LIVE_VERSION --replicas=0 || true'
+                bat 'kubectl scale deployment/%APP_NAME%-%LIVE_VERSION% --replicas=0 || exit /b 0'
             }
         }
     }
 
     post {
         failure {
-            script {
-                sh 'kubectl patch service $KUBE_SERVICE -p \'{"spec":{"selector":{"app":"'$APP_NAME'","version":"'$LIVE_VERSION'"}}}\''
+            steps {
+                bat '''
+                kubectl patch service %KUBE_SERVICE% -p "{\"spec\":{\"selector\":{\"app\":\"%APP_NAME%\",\"version\":\"%LIVE_VERSION%\"}}}"
+                '''
             }
         }
     }
