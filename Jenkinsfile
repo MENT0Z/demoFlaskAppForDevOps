@@ -88,13 +88,14 @@ pipeline {
         }
 
         stage('Smoke Test') {
-            steps {
-                bat """
-                FOR /F %%i IN ('kubectl get svc %KUBE_SERVICE% -o jsonpath="{.status.loadBalancer.ingress[0].ip}"') DO SET SERVICE_IP=%%i
-                curl -f http://%SERVICE_IP% || exit /b 1
-                """
-            }
-        }
+    steps {
+        bat '''
+        FOR /F %%i IN ('minikube service %KUBE_SERVICE% --url') DO SET SERVICE_URL=%%i
+        curl -f %SERVICE_URL% || exit /b 1
+        '''
+    }
+}
+
 
         stage('Switch Traffic') {
             steps {
