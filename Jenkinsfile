@@ -2,10 +2,11 @@ pipeline {
     agent any
 
     environment {
-        DOCKER_HUB_USER = 'ment00x'
-        APP_NAME = 'flask'
-        KUBE_SERVICE = 'flask-service'
-        KUBECONFIG = 'C:\\ProgramData\\Jenkins\\.kube\\config'  // <-- add this line
+        DOCKER_HUB_USER = 'ment00x'          // your Docker Hub username
+        APP_NAME = 'flask'                   // app name
+        KUBE_SERVICE = 'flask-service'      // Kubernetes service name
+        // Set this to point to your minikube kubeconfig file location:
+        KUBECONFIG = 'C:\Users\Madan Raj Upadhyay\.kube\config'  
     }
 
     stages {
@@ -17,20 +18,24 @@ pipeline {
 
         stage('Build Docker Image') {
             steps {
-                bat 'docker build -t %DOCKER_HUB_USER%/flask-jenkins:v1 .'
+                bat "docker build -t %DOCKER_HUB_USER%/flask-jenkins:v1 ."
             }
         }
 
         stage('Push Docker Image') {
             steps {
-                withCredentials([usernamePassword(credentialsId: 'dockerhub',
-                                                 usernameVariable: 'USER',
-                                                 passwordVariable: 'PASS')]) {
-                    bat '''
+                withCredentials([usernamePassword(credentialsId: 'dockerhub', usernameVariable: 'USER', passwordVariable: 'PASS')]) {
+                    bat """
                         echo %PASS% | docker login -u %USER% --password-stdin
                         docker push %DOCKER_HUB_USER%/flask-jenkins:v1
-                    '''
+                    """
                 }
+            }
+        }
+
+        stage('Verify Kubernetes Access') {
+            steps {
+                bat 'kubectl cluster-info'
             }
         }
 
@@ -41,14 +46,16 @@ pipeline {
                     def NEXT_VERSION = LIVE_VERSION == 'blue' ? 'green' : 'blue'
                     env.LIVE_VERSION = LIVE_VERSION
                     env.NEXT_VERSION = NEXT_VERSION
-                    echo "Live: ${LIVE_VERSION}, Next: ${NEXT_VERSION}"
+                    echo "Live version is: ${LIVE_VERSION}"
+                    echo "Next version to deploy: ${NEXT_VERSION}"
                 }
             }
         }
 
         stage('Deploy Next Version') {
             steps {
-                bat '''
+                // Create deployment YAML dynamically
+                bat """
                 echo apiVersion: apps/v1 > k8s\\deployment-%NEXT_VERSION%.yaml
                 echo kind: Deployment >> k8s\\deployment-%NEXT_VERSION%.yaml
                 echo metadata: >> k8s\\deployment-%NEXT_VERSION%.yaml
@@ -76,24 +83,24 @@ pipeline {
 
                 kubectl apply -f k8s\\deployment-%NEXT_VERSION%.yaml
                 kubectl rollout status deployment/%APP_NAME%-%NEXT_VERSION%
-                '''
+                """
             }
         }
 
         stage('Smoke Test') {
             steps {
-                bat '''
+                bat """
                 FOR /F %%i IN ('kubectl get svc %KUBE_SERVICE% -o jsonpath="{.status.loadBalancer.ingress[0].ip}"') DO SET SERVICE_IP=%%i
                 curl -f http://%SERVICE_IP% || exit /b 1
-                '''
+                """
             }
         }
 
         stage('Switch Traffic') {
             steps {
-                bat '''
-                kubectl patch service %KUBE_SERVICE% -p "{\"spec\":{\"selector\":{\"app\":\"%APP_NAME%\",\"version\":\"%NEXT_VERSION%\"}}}"
-                '''
+                bat """
+                kubectl patch service %KUBE_SERVICE% -p "{\\"spec\\":{\\"selector\\":{\\"app\\":\\"%APP_NAME%\\",\\"version\\":\\"%NEXT_VERSION%\"}}}"
+                """
             }
         }
 
@@ -107,9 +114,9 @@ pipeline {
     post {
         failure {
             steps {
-                bat '''
-                kubectl patch service %KUBE_SERVICE% -p "{\"spec\":{\"selector\":{\"app\":\"%APP_NAME%\",\"version\":\"%LIVE_VERSION%\"}}}"
-                '''
+                bat """
+                kubectl patch service %KUBE_SERVICE% -p "{\\"spec\\":{\\"selector\\":{\\"app\\":\\"%APP_NAME%\\",\\"version\\":\\"%LIVE_VERSION%\"}}}"
+                """
             }
         }
     }
