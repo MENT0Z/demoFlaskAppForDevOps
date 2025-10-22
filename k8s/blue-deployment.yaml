@@ -1,0 +1,37 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flask-blue
+  labels:
+    app: flask
+    version: blue
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: flask
+      version: blue
+  template:
+    metadata:
+      labels:
+        app: flask
+        version: blue
+    spec:
+      containers:
+      - name: flask
+        image: ment00x/flask-jenkins:v1
+        ports:
+        - containerPort: 5000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: flask-service
+spec:
+  type: LoadBalancer
+  selector:
+    app: flask
+    version: blue
+  ports:
+  - port: 80
+    targetPort: 5000
