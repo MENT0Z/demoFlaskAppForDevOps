@@ -91,10 +91,12 @@ pipeline {
     steps {
         bat '''
         FOR /F %%i IN ('minikube service %KUBE_SERVICE% --url') DO SET SERVICE_URL=%%i
+        echo Testing %SERVICE_URL%
         curl -f %SERVICE_URL% || exit /b 1
         '''
     }
 }
+
 
 
         stage('Switch Traffic') {
