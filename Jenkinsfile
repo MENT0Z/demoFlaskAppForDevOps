@@ -6,7 +6,7 @@ pipeline {
         APP_NAME = 'flask'                   // app name
         KUBE_SERVICE = 'flask-service'      // Kubernetes service name
         // Set this to point to your minikube kubeconfig file location:
-        KUBECONFIG = 'C:\Users\Madan Raj Upadhyay\.kube\config'  
+        KUBECONFIG = 'C:\\Users\\Madan Raj Upadhyay\\.kube\\config'
     }
 
     stages {
