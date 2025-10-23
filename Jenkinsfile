@@ -90,9 +90,11 @@ pipeline {
         stage('Smoke Test') {
     steps {
         bat '''
-        FOR /F %%i IN ('minikube service %KUBE_SERVICE% --url') DO SET SERVICE_URL=%%i
-        echo Testing %SERVICE_URL%
-        curl -f %SERVICE_URL% || exit /b 1
+        setlocal enabledelayedexpansion
+        for /f "tokens=* delims=" %%i in ('minikube service %KUBE_SERVICE% --url ^| findstr http') do set SERVICE_URL=%%i
+        echo Found URL: !SERVICE_URL!
+        curl -f !SERVICE_URL! || exit /b 1
+        endlocal
         '''
     }
 }
